@@ -1,0 +1,89 @@
+-- 1. metrics_summary (основные метрики по товарам)
+-- Пояснение: Рассчитывает общие продажи, поставки, остатки, процент дефицита и оборачиваемость для каждого товара.
+CREATE TABLE metrics_summary AS
+SELECT 
+    p.product_id,
+    p.product_name,
+    p.category,
+    IFNULL(SUM(s.quantity), 0) AS total_sales,
+    IFNULL(SUM(su.quantity), 0) AS total_supply,
+    IFNULL(SUM(i.stock), 0) AS current_inventory,
+    CASE 
+        WHEN SUM(s.quantity) > SUM(su.quantity) + SUM(i.stock) 
+            THEN ROUND((SUM(s.quantity) - SUM(su.quantity) - SUM(i.stock)) * 100.0 / SUM(s.quantity), 2)
+        ELSE 0 
+    END AS shortage_percent,
+    CASE 
+        WHEN AVG(i.stock) > 0 THEN ROUND(SUM(s.quantity) * 1.0 / AVG(i.stock), 2)
+        ELSE NULL
+    END AS turnover_rate
+FROM products p
+LEFT JOIN sales s ON p.product_id = s.product_id
+LEFT JOIN supply su ON p.product_id = su.product_id
+LEFT JOIN inventory i ON p.product_id = i.product_id
+GROUP BY p.product_id, p.product_name, p.category;
+
+-- 2. total_sales (общие продажи)
+-- Пояснение: Вычисляет общий объём продаж по всем товарам и аптекам.
+CREATE TABLE total_sales AS
+SELECT SUM(quantity) AS total_sales
+FROM sales;
+
+-- 3. total_supply (общие поставки)
+-- Пояснение: Вычисляет общий объём поставок по всем товарам и аптекам.
+CREATE TABLE total_supply AS
+SELECT SUM(quantity) AS total_supply
+FROM supply;
+
+-- 4. current_inventory (общие остатки)
+-- Пояснение: Вычисляет общий объём остатков по всем товарам и аптекам.
+CREATE TABLE current_inventory AS
+SELECT SUM(stock) AS current_inventory
+FROM inventory;
+
+-- 5. avg_shortage_percent (средний процент дефицита)
+-- Пояснение: Рассчитывает средний процент дефицита по всем товарам.
+CREATE TABLE avg_shortage_percent AS
+SELECT ROUND(AVG(shortage_percent), 2) AS avg_shortage_percent 
+FROM metrics_summary;
+
+-- 6. top_shortage (топ-5 дефицитных товаров)
+-- Пояснение: Выбирает 5 товаров с наибольшим процентом дефицита.
+CREATE TABLE top_shortage AS
+SELECT product_name, shortage_percent 
+FROM metrics_summary 
+ORDER BY shortage_percent DESC 
+LIMIT 5;
+
+-- 7. top_turnover_fast (топ-5 товаров с быстрой оборачиваемостью)
+-- Пояснение: Выбирает 5 товаров с самой высокой оборачиваемостью.
+CREATE TABLE top_turnover_fast AS
+SELECT product_name, turnover_rate 
+FROM metrics_summary 
+WHERE turnover_rate IS NOT NULL 
+ORDER BY turnover_rate DESC 
+LIMIT 5;
+
+-- 8. top_turnover_slow (топ-5 товаров с медленной оборачиваемостью)
+-- Пояснение: Выбирает 5 товаров с самой низкой оборачиваемостью.
+CREATE TABLE top_turnover_slow AS
+SELECT product_name, turnover_rate 
+FROM metrics_summary 
+WHERE turnover_rate IS NOT NULL 
+ORDER BY turnover_rate ASC 
+LIMIT 5;
+
+-- 9. avg_turnover_rate (средняя оборачиваемость)
+-- Пояснение: Рассчитывает среднюю оборачиваемость по всем товарам.
+CREATE TABLE avg_turnover_rate AS
+SELECT ROUND(AVG(turnover_rate), 2) AS avg_turnover_rate 
+FROM metrics_summary;
+
+-- 10. sales_by_month (продажи по месяцам)
+-- Пояснение: Агрегирует продажи по месяцам для анализа временных трендов.
+CREATE TABLE sales_by_month AS
+SELECT 
+    strftime('%Y-%m', date) AS month,
+    SUM(quantity) AS total_quantity
+FROM sales
+GROUP BY strftime('%Y-%m', date);
